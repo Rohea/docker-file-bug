@@ -6,14 +6,17 @@ test case made by @nwalters512.
 ### Description
 
 This bug was noticed when we worked on our Symfony application utilizing a private
-library that was developed simultaneously using the Composer symlink functionality.
-The library is mounted on a docker volume that is then symlinked to vendor instead
-of installing the dependency it from packagist.
+library that was simultaneously developed using the Composer symlink functionality.
+The library is mounted on a docker volume that is then symlinked to vendor/ instead
+of installing the dependency from packagist.
+
 That workflow lead to API requests failing with autoloader not being able to load
 classes from the library that was symlinked. After much debugging it was discovered
 that this happens due to the fact that the browser makes multiple requests
 simultaneously and this causes Autoloader to try to resolve thousands of files
 across the symlink at the same time and some randomly fail.
+
+The issue reproduces when the following conditions are met:
 
 * The code is being run inside a Docker container
 * Docker is being run on a Windows machine
