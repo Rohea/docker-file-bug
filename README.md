@@ -1,123 +1,117 @@
-# docker-file-bug
+# File reads via symlinks on Docker for Windows randomly fail with high load
 
-A reproducible case of a bug I found in Docker.
+A reproducible case of a bug my organisation found in Docker. Based heavily on a
+test case made by @nwalters512.
 
 ### Description
 
-This bug was observed when I was trying to compile the same EJS template
-in several worker processes at once. I observed that occasionally, one of the `.ejs`
-files that was included from the main template I was rendering
-would be reported as not existing, even though it definitely did. The
-included template was being used many times in the file, and so EJS was frequently
-checking if it existed and reading it.
-
-Eventually, I determined that this failure only occurred if the following conditions
-were met:
+This bug was noticed when we worked on our Symfony application utilizing a private
+library that was developed simultaneously using the Composer symlink functionality.
+The library is mounted on a docker volume that is then symlinked to vendor instead
+of installing the dependency it from packagist.
+That workflow lead to API requests failing with autoloader not being able to load
+classes from the library that was symlinked. After much debugging it was discovered
+that this happens due to the fact that the browser makes multiple requests
+simultaneously and this causes Autoloader to try to resolve thousands of files
+across the symlink at the same time and some randomly fail.
 
 * The code is being run inside a Docker container
-* Docker is being run on a Mac
-* The file that we're trying to check the existence of is on a mounted volume.
+* Docker is being run on a Windows machine
+* The file is accesses via a symlink to it's parent folder when both the file and
+the symlink reside on a volume.
+* There are multiple concurrent FS accesses running simultaneously
 
-If either of those conditions are broken (the code was run directly on the host,
-the file exists in the image itself, of Docker is run on a Linux machine),
-then the bug disappears. For this reason, I believe the bug is with Docker, and not
-Node or EJS.
+This bug does not reproduce on Docker for Mac and thus I believe it's a bug in
+how the Docker for Windows fileshare operates.
 
 ### The reproducible case
 
-I was able to reproduce this case with a simple program that spawns two
-children with the `threads` package. Each child repeatedly checks if a file exists
-and reads the file in a tight loop. On my Mac, I observe that the file sometimes
-appears to not exist.
+I was able to reproduce this case with a simple program that spawns multiple
+children with the `threads` package. Each child repeatedly tries to check if a file
+exists across a symlink and read the contents. On Docker for Windows this randomly
+fails.
 
 ### Running
 
-First, build the image:
+To reproduce the test case run:
 
 ```
-docker build . -t docker-file-bug
-```
-
-Then, run a container with `volume` mounted at `/volume` (remember to substitute
-the actual absolute path to `volume` on your machine:
-
-```
-docker run -v /absolute/path/to/docker-file-bug/volume:/volume docker-file-bug
+docker-compose up --force-recreate --build
 ```
 
 After running the container, I observe logs that look something like
 the following truncated logs:
 
 ```
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File does not exist!
-File exists.
-File does not exist!
-File exists.
-File exists.
-File exists.
-File does not exist!
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | File does not exist!
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | File does not exist!
+docker-file-bug_1  | .
+docker-file-bug_1  | File does not exist!
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
 ```
 
 However, we expect to see the following (the file should never be reported as not existing):
 
 ```
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
-File exists.
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
+docker-file-bug_1  | .
 ```
 
 ### Version info
 
 Docker version:
 ```
-Docker version 18.03.1-ce, build 9ee9f40
+Docker version 18.06.0-ce, build 19098
 ```
 
-MacOS version:
+Windows version:
 ```
-10.13.4 (17E199)
+Windows 10 Pro (Version 1709 (OS Build 16299.371))
 ```
