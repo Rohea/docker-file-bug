@@ -1,0 +1,10 @@
+version: '3'
+services:
+  docker-file-bug:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # This is only for linked dev
+      - ./volume:/volume
+      - ./test-share:/test-share
